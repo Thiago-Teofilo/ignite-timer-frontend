@@ -4,14 +4,19 @@ import {
   useState,
   useReducer,
   useEffect,
+  useContext,
 } from 'react'
-import { Cycle, cyclesReducer } from '../reducers/cycles/reducer'
+import { cyclesReducer } from '../reducers/cycles/reducer'
 import {
   addNewCycleAction,
   interruptCurrentCycleAction,
   markCurrentCycleAsFinishedAction,
+  setCyclesAction,
 } from '../reducers/cycles/actions'
 import { differenceInSeconds } from 'date-fns'
+import { Cycle } from '../api/cycle'
+import { UserContext } from './UserContext'
+import { getProfile } from '../api/user'
 
 interface CreateCycleData {
   task: string
@@ -27,6 +32,7 @@ interface CyclesContextType {
   setSecondsPassed: (seconds: number) => void
   createNewCycle: (data: CreateCycleData) => void
   interruptCurrentCycle: () => void
+  setCycles: (cycles: Cycle[]) => void
 }
 
 export const CyclesContext = createContext({} as CyclesContextType)
@@ -40,6 +46,8 @@ const CYCLES_STATE_STORAGE_KEY = '@ignite-timer:cycles-state-1.0.0'
 export function CyclesContextProvider({
   children,
 }: CyclesContextProviderProps) {
+  const { sessionToken, user, setLoggedUser } = useContext(UserContext)
+
   const [cyclesState, dispatch] = useReducer(
     cyclesReducer,
     {
@@ -47,10 +55,12 @@ export function CyclesContextProvider({
       activeCycleId: null,
     },
     (initialState) => {
-      const storedStateAsJSON = localStorage.getItem(CYCLES_STATE_STORAGE_KEY)
+      if (!user) {
+        const storedStateAsJSON = localStorage.getItem(CYCLES_STATE_STORAGE_KEY)
 
-      if (storedStateAsJSON) {
-        return JSON.parse(storedStateAsJSON)
+        if (storedStateAsJSON) {
+          return JSON.parse(storedStateAsJSON)
+        }
       }
 
       return initialState
@@ -69,10 +79,24 @@ export function CyclesContextProvider({
   })
 
   useEffect(() => {
-    const stateJSON = JSON.stringify(cyclesState)
+    if (sessionToken && !user) {
+      getProfile().then((user) => {
+        setLoggedUser({
+          user,
+          token: sessionToken,
+        })
+        setCycles(user.cycles ?? [])
+      })
+    }
+  })
 
-    localStorage.setItem(CYCLES_STATE_STORAGE_KEY, stateJSON)
-  }, [cyclesState])
+  useEffect(() => {
+    if (!user && !sessionToken) {
+      const stateJSON = JSON.stringify(cyclesState)
+
+      localStorage.setItem(CYCLES_STATE_STORAGE_KEY, stateJSON)
+    }
+  }, [cyclesState, user])
 
   function setSecondsPassed(seconds: number) {
     setAmountSecondsPassed(seconds)
@@ -100,6 +124,9 @@ export function CyclesContextProvider({
     dispatch(interruptCurrentCycleAction())
   }
 
+  function setCycles(cycles: Cycle[]) {
+    dispatch(setCyclesAction(cycles))
+  }
   return (
     <CyclesContext.Provider
       value={{
@@ -111,6 +138,7 @@ export function CyclesContextProvider({
         setSecondsPassed,
         createNewCycle,
         interruptCurrentCycle,
+        setCycles,
       }}
     >
       {children}

@@ -1,14 +1,11 @@
+import {
+  createCycle,
+  Cycle,
+  finishCycle,
+  interruptCycle,
+} from '../../api/cycle'
 import { ActionTypes } from './actions'
 import { produce } from 'immer'
-
-export interface Cycle {
-  id: string
-  task: string
-  minutesAmount: number
-  startDate: Date
-  interruptedDate?: Date
-  finishedDate?: Date
-}
 
 interface CyclesState {
   cycles: Cycle[]
@@ -19,6 +16,10 @@ interface CyclesState {
 export function cyclesReducer(state: CyclesState, action: any) {
   switch (action.type) {
     case ActionTypes.ADD_NEW_CYCLE:
+      createCycle({
+        ...action.payload.newCycle,
+      })
+
       return produce(state, (draft) => {
         draft.cycles.push(action.payload.newCycle)
         draft.activeCycleId = action.payload.newCycle.id
@@ -31,9 +32,17 @@ export function cyclesReducer(state: CyclesState, action: any) {
       if (currentCycleIndex < 0) {
         return state
       }
+
+      const interruptedDate = new Date()
+
+      interruptCycle({
+        cycleId: state.activeCycleId!,
+        interruptedDate,
+      })
+
       return produce(state, (draft) => {
         draft.activeCycleId = null
-        draft.cycles[currentCycleIndex].interruptedDate = new Date()
+        draft.cycles[currentCycleIndex].interruptedDate = interruptedDate
       })
     }
     case ActionTypes.MARK_CURRENT_CYCLE_AS_FINISHED: {
@@ -44,9 +53,28 @@ export function cyclesReducer(state: CyclesState, action: any) {
       if (currentCycleIndex < 0) {
         return state
       }
+
+      const finishedDate = new Date()
+
+      finishCycle({
+        cycleId: state.activeCycleId!,
+        finishedDate,
+      })
+
       return produce(state, (draft) => {
         draft.activeCycleId = null
-        draft.cycles[currentCycleIndex].finishedDate = new Date()
+        draft.cycles[currentCycleIndex].finishedDate = finishedDate
+      })
+    }
+    case ActionTypes.SET_CYCLES: {
+      // Coleta o ciclo que não foi finalizado nem interrompido para ser o activeCycle
+      const activeCycle: Cycle = action.payload.cycles.find(
+        (cycle: Cycle) => !cycle.interruptedDate && !cycle.finishedDate,
+      )
+
+      return produce(state, (draft) => {
+        draft.activeCycleId = activeCycle?.id ?? null
+        draft.cycles = action.payload.cycles
       })
     }
     default:
